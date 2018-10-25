@@ -4,18 +4,22 @@ import requests
 from humanize import naturalsize
 
 from .util import (
-    check_es_cluster_health,
+    check_cluster_health,
     combine_nodes_and_shards,
     execute_reroute_commands,
     get_node_fs_stats,
     get_ordred_nodes_and_average_used,
     get_shards,
+    get_transient_cluster_setting,
+    set_transient_cluster_setting,
     wait_for_no_relocations,
 )
 
 
 class BalanceException(click.ClickException):
-    pass
+    def __init__(self, message):
+        message = click.style(message, 'red')
+        super(BalanceException, self).__init__(message)
 
 
 def attempt_to_find_swap(nodes, shards):
@@ -177,44 +181,63 @@ def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
     click.echo(f'> Target: {click.style(es_host, bold=True)}')
     click.echo()
 
-    # Don't continue if we're not green and relocating nothing!
-    try:
-        check_es_cluster_health(es_host)
-    except Exception as e:
-        if commit:
-            raise BalanceException(e)
-        else:
-            click.echo(
-                f'{click.style("Warning", bold=True)}: '
-                f'{click.style(f"{e}", "yellow")}'
-                ', would not continue with --commit!\n'
-            )
-
-
-    click.echo('Loading nodes...')
-    nodes = get_node_fs_stats(es_host, attrs=attrs)
-    click.echo(f'> Found {len(nodes)} nodes')
-    click.echo()
-
-    click.echo('Loading shards...')
-    shards = get_shards(es_host, attrs=attrs)
-    click.echo(f'> Found {len(shards)} shards')
-    click.echo()
-
-    if not nodes:
-        raise BalanceException(
-            f'No nodes found!',
+    if commit:
+        click.echo('Disabling cluster rebalance...')
+        # Save the old value to restore later
+        previous_rebalance = get_transient_cluster_setting(
+            es_host, 'cluster.routing.rebalance.enable',
+        )
+        set_transient_cluster_setting(
+            es_host, 'cluster.routing.rebalance.enable', 'none',
         )
 
-    click.echo(f'Investigating rebalance options...')
+    try:
+        click.echo('Loading nodes...')
+        nodes = get_node_fs_stats(es_host, attrs=attrs)
+        if not nodes:
+            raise BalanceException(f'No nodes found!')
 
-    for i in range(iterations):
-        click.echo(f'> Iteration {i}')
-        reroute_commands = attempt_to_find_swap(nodes, shards)
-        if reroute_commands and commit:
-            execute_reroute(es_host, reroute_commands)
-
+        click.echo(f'> Found {len(nodes)} nodes')
         click.echo()
+
+        click.echo('Loading shards...')
+        shards = get_shards(es_host, attrs=attrs)
+        if not shards:
+            raise BalanceException(f'No shards found!')
+
+        click.echo(f'> Found {len(shards)} shards')
+        click.echo()
+
+        click.echo(f'Investigating rebalance options...')
+
+        for i in range(iterations):
+            click.echo(f'> Iteration {i}')
+            reroute_commands = attempt_to_find_swap(nodes, shards)
+
+            if reroute_commands and commit:
+                # Check we're good to go
+                try:
+                    check_cluster_health(es_host)
+                except Exception as e:
+                    raise BalanceException(f'{e}')
+
+                click.echo()
+                print_execute_reroutes(es_host, reroute_commands)
+
+            click.echo()
+
+    # Always restore the previous rebalance setting
+    finally:
+        if commit:
+            click.echo(
+                f'Restoring previous rebalance setting ({previous_rebalance})...',
+            )
+            set_transient_cluster_setting(
+                es_host, 'cluster.routing.rebalance.enable', previous_rebalance,
+            )
+
+    click.echo('# Cluster rebalanced!')
+    click.echo()
 
 
 if __name__ == '__main__':
