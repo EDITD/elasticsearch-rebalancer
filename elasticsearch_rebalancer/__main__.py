@@ -128,7 +128,17 @@ def execute_reroute(es_host, reroute_commands):
 @click.option('--iterations', default=1, type=int)
 @click.option('--attr', multiple=True)
 @click.option('--commit', is_flag=True, default=False)
-def rebalance_elasticsearch(es_host, iterations, attr, commit=False):
+def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
+    # Parse out any attrs
+    attrs = {}
+    if attr:
+        for a in attr:
+            try:
+                key, value = a.split('=', 1)
+            except ValueError:
+                raise BalanceException('Invalid attr, specify as key=value!')
+            attrs[key] = value
+
     click.echo()
     click.echo('# Elasticsearch Rebalancer')
     click.echo(f'> Target: {click.style(es_host, bold=True)}')
@@ -147,14 +157,6 @@ def rebalance_elasticsearch(es_host, iterations, attr, commit=False):
                 ', would not continue with --commit!\n'
             )
 
-    # Parse out attrs
-    attrs = {}
-    for a in attr:
-        try:
-            key, value = a.split('=', 1)
-        except ValueError:
-            raise BalanceException('Invalid attr, specify as key=value!')
-        attrs[key] = value
 
     click.echo('Loading nodes...')
     nodes = get_node_fs_stats(es_host, attrs=attrs)
