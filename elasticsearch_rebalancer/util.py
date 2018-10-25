@@ -89,7 +89,7 @@ def get_shards(es_host, attrs=None):
     return filtered_shards
 
 
-def get_ordred_notes_and_average_used(nodes):
+def get_ordred_nodes_and_average_used(nodes):
     sum_total_bytes = 0
     sum_used_bytes = 0
 

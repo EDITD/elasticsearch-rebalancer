@@ -8,7 +8,7 @@ from .util import (
     combine_nodes_and_shards,
     es_request,
     get_node_fs_stats,
-    get_ordred_notes_and_average_used,
+    get_ordred_nodes_and_average_used,
     get_shards,
 )
 
@@ -18,7 +18,7 @@ class BalanceException(click.ClickException):
 
 
 def attempt_to_find_swap(nodes, shards):
-    ordered_nodes, average = get_ordred_notes_and_average_used(nodes)
+    ordered_nodes, average = get_ordred_nodes_and_average_used(nodes)
     node_name_to_shards, index_to_node_names = combine_nodes_and_shards(nodes, shards)
 
     for node in reversed(ordered_nodes):  # biggest to smallest node
