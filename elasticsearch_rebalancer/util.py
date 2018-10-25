@@ -19,7 +19,6 @@ def es_request(es_host, endpoint, method=requests.get, **kwargs):
     try:
         response.raise_for_status()
     except requests.HTTPError:
-        print(response.content)
         raise
 
     return response.json()
