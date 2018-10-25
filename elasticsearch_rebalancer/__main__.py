@@ -19,7 +19,7 @@ class BalanceException(click.ClickException):
 
 def attempt_to_find_swap(nodes, shards):
     ordered_nodes, average = get_ordred_notes_and_average_used(nodes)
-    node_name_to_shards, shard_id_to_node_names = combine_nodes_and_shards(nodes, shards)
+    node_name_to_shards, index_to_node_names = combine_nodes_and_shards(nodes, shards)
 
     for node in reversed(ordered_nodes):  # biggest to smallest node
         if node['name'] in node_name_to_shards:
@@ -48,7 +48,7 @@ def attempt_to_find_swap(nodes, shards):
     min_node_shards = node_name_to_shards[min_node['name']]
 
     for shard in reversed(max_node_shards):  # biggest to smallest shard
-        if min_node['name'] not in shard_id_to_node_names[shard['id']]:
+        if min_node['name'] not in index_to_node_names[shard['index']]:
             max_shard = shard
             break
     else:
@@ -58,7 +58,7 @@ def attempt_to_find_swap(nodes, shards):
         ))
 
     for shard in min_node_shards:
-        if max_node['name'] not in shard_id_to_node_names[shard['id']]:
+        if max_node['name'] not in index_to_node_names[shard['index']]:
             min_shard = shard
             break
     else:

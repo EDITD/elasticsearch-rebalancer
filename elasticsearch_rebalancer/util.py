@@ -105,15 +105,15 @@ def get_ordred_notes_and_average_used(nodes):
 
 def combine_nodes_and_shards(nodes, shards):
     node_name_to_shards = defaultdict(list)
-    shard_id_to_node_names = defaultdict(list)
+    index_to_node_names = defaultdict(list)
 
     for shard in shards:
         node_name_to_shards[shard['node']].append(shard)
-        shard_id_to_node_names[shard['id']].append(shard['node'])
+        index_to_node_names[shard['index']].append(shard['node'])
 
     node_name_to_shards = {
         key: sorted(shards, key=lambda shard: shard['size_in_bytes'])
         for key, shards in node_name_to_shards.items()
     }
 
-    return node_name_to_shards, shard_id_to_node_names
+    return node_name_to_shards, index_to_node_names
