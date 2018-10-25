@@ -124,22 +124,34 @@ def attempt_to_find_swap(nodes, shards):
     ]
 
 
-def print_execute_reroutes(es_host, commands):
-    for command in commands:
-        args = command['move']
-        click.echo((
-            f'> Executing reroute of {args["index"]}-{args["shard"]} '
-            f'from {args["from_node"]} -> {args["to_node"]}'
-        ))
+def print_command(command):
+    args = command['move']
+    click.echo((
+        f'> Executing reroute of {args["index"]}-{args["shard"]} '
+        f'from {args["from_node"]} -> {args["to_node"]}'
+    ))
 
+
+def check_raise_health(es_host):
+    # Check we're good to go
+    try:
+        check_cluster_health(es_host)
+    except Exception as e:
+        raise BalanceException(f'{e}')
+
+
+def print_execute_reroutes(es_host, commands):
     try:
         execute_reroute_commands(es_host, commands)
     except requests.HTTPError as e:
-        if e.status_code != 400:
+        if e.response.status_code != 400:
             raise
 
     # Parallel reroute worked - so just wait & return
     else:
+        for command in commands:
+            print_command(command)
+
         click.echo('Waiting for relocations to complete...')
         wait_for_no_relocations(es_host)
         return
@@ -148,18 +160,21 @@ def print_execute_reroutes(es_host, commands):
     # parallel re-route because it would push the max node over the disk threshold.
     # So now attempt to reroute one shard at a time - first the big shard off the
     # big node, which should make space for the returning shard.
-    click.echo(click.style(
-        'Parallel rerouting failed! Attempting shard by shard...',
+    if not click.confirm(click.style(
+        'Parallel rerouting failed! Attempt shard by shard?',
         'yellow',
-    ))
+    )):
+        raise BalanceException('User exited serial rerouting!')
 
     for i, command in enumerate(commands, 1):
+        print_command(command)
         execute_reroute_commands(es_host, [command])
 
         click.echo(
             f'Waiting for relocation to complete ({i}/{len(commands)})...',
         )
         wait_for_no_relocations(es_host)
+        check_raise_health(es_host)  # check the cluster is still good
 
 
 @click.command()
@@ -198,6 +213,9 @@ def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
     click.echo()
 
     if commit:
+        # Check we have a healthy cluster
+        check_raise_health(es_host)
+
         click.echo('Disabling cluster rebalance...')
         # Save the old value to restore later
         previous_rebalance = get_transient_cluster_setting(
@@ -226,21 +244,19 @@ def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
 
         click.echo(f'Investigating rebalance options...')
 
+        all_reroute_commands = []
+
         for i in range(iterations):
             click.echo(f'> Iteration {i}')
             reroute_commands = attempt_to_find_swap(nodes, shards)
 
-            if reroute_commands and commit:
-                # Check we're good to go
-                try:
-                    check_cluster_health(es_host)
-                except Exception as e:
-                    raise BalanceException(f'{e}')
-
-                click.echo()
-                print_execute_reroutes(es_host, reroute_commands)
+            if reroute_commands:
+                all_reroute_commands.extend(reroute_commands)
 
             click.echo()
+
+        if commit:
+            print_execute_reroutes(es_host, reroute_commands)
 
     # Always restore the previous rebalance setting
     finally:
