@@ -53,6 +53,13 @@ def wait_for_no_relocations(es_host):
 
         sleep(10)
 
+
+def execute_reroute_commands(es_host, commands):
+    es_request(es_host, '_cluster/reroute', method=requests.post, json={
+        'commands': commands,
+    })
+
+
 def get_transient_cluster_setting(es_host, path):
     attrs = path.split('.')
     settings = get_cluster_settings(es_host)
