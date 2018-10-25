@@ -129,7 +129,10 @@ def get_shards(es_host, attrs=None):
     filtered_shards = []
 
     for shard in shards:
-        if shard['index'] not in filtered_index_names:
+        if (
+            shard['state'] != 'STARTED'
+            or shard['index'] not in filtered_index_names
+        ):
             continue
 
         shard['id'] = f'{shard["index"]}-{shard["shard"]}'
