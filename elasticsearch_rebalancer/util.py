@@ -33,8 +33,9 @@ def get_cluster_settings(es_host):
     return es_request(es_host, '_cluster/settings')
 
 
-def check_es_cluster_health(es_host):
-    health = es_request(es_host, '_cluster/health')
+def check_cluster_health(es_host):
+    health = get_cluster_health(es_host)
+
     if health['status'] != 'green':
         raise Exception('ES is not green!')
 
