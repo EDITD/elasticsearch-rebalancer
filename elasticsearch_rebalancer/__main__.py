@@ -258,6 +258,10 @@ def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
         if commit:
             print_execute_reroutes(es_host, reroute_commands)
 
+    except requests.HTTPError as e:
+        click.echo(click.style(e.response.content, 'yellow'))
+        raise BalanceException(f'Invalid ES response: {e.response.status_code}')
+
     # Always restore the previous rebalance setting
     finally:
         if commit:
