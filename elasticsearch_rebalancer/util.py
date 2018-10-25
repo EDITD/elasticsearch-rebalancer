@@ -1,4 +1,5 @@
 from collections import defaultdict
+from time import sleep
 
 import requests
 
@@ -41,6 +42,16 @@ def check_es_cluster_health(es_host):
     if relocating_shards > 0:
         raise Exception(f'ES is already relocating {relocating_shards} shards!')
 
+
+def wait_for_no_relocations(es_host):
+    while True:
+        health = get_cluster_health(es_host)
+
+        relocating_shards = health['relocating_shards']
+        if not relocating_shards:
+            break
+
+        sleep(10)
 
 def get_transient_cluster_setting(es_host, path):
     attrs = path.split('.')
