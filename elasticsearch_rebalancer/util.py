@@ -3,6 +3,12 @@ from collections import defaultdict
 import requests
 
 
+def matches_attrs(attrs, match_attrs):
+    match_attrs = match_attrs or {}
+    attrs = attrs or {}
+    return attrs == match_attrs
+
+
 def es_request(es_host, endpoint, method=requests.get, **kwargs):
     response = method(
         f'http://{es_host}/{endpoint}',
@@ -12,10 +18,12 @@ def es_request(es_host, endpoint, method=requests.get, **kwargs):
     return response.json()
 
 
-def matches_attrs(attrs, match_attrs):
-    match_attrs = match_attrs or {}
-    attrs = attrs or {}
-    return attrs == match_attrs
+def get_cluster_health(es_host):
+    return es_request(es_host, '_cluster/health')
+
+
+def get_cluster_settings(es_host):
+    return es_request(es_host, '_cluster/settings')
 
 
 def check_es_cluster_health(es_host):
@@ -26,6 +34,24 @@ def check_es_cluster_health(es_host):
     relocating_shards = health['relocating_shards']
     if relocating_shards > 0:
         raise Exception(f'ES is already relocating {relocating_shards} shards!')
+
+
+def get_transient_cluster_setting(es_host, path):
+    attrs = path.split('.')
+    settings = get_cluster_settings(es_host)
+
+    value = settings['transient']
+    for attr in attrs:
+        value = value.get(attr)
+        if not value:
+            return
+    return value
+
+
+def set_transient_cluster_setting(es_host, path, value):
+    es_request(es_host, '_cluster/settings', method=requests.put, json={
+        'transient': {path: value},
+    })
 
 
 def get_node_fs_stats(es_host, attrs=None):
