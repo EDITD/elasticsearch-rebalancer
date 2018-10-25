@@ -24,6 +24,10 @@ class BalanceException(click.ClickException):
         super(BalanceException, self).__init__(message)
 
 
+def format_size(value):
+    return naturalsize(value, binary=True)
+
+
 def attempt_to_find_swap(nodes, shards):
     ordered_nodes, average = get_ordred_nodes_and_average_used(nodes)
     node_name_to_shards, index_to_node_names = combine_nodes_and_shards(nodes, shards)
@@ -92,8 +96,8 @@ def attempt_to_find_swap(nodes, shards):
 
     click.echo((
         '> Recommended swap for: '
-        f'{max_shard["id"]} ({naturalsize(max_shard["size_in_bytes"])}) <> '
-        f'{min_shard["id"]} ({naturalsize(min_shard["size_in_bytes"])})'
+        f'{max_shard["id"]} ({format_size(max_shard["size_in_bytes"])}) <> '
+        f'{min_shard["id"]} ({format_size(min_shard["size_in_bytes"])})'
     ))
     click.echo((
         f'  maxNode: {max_node["name"]} '
