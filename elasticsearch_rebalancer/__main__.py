@@ -1,3 +1,5 @@
+from time import sleep
+
 import click
 import requests
 
@@ -166,6 +168,11 @@ def print_execute_reroutes(es_host, commands):
     )):
         raise BalanceException('User exited serial rerouting!')
 
+    cluster_update_interval = get_transient_cluster_setting(
+        es_host, 'cluster.info.update.interval', default='30s',
+    )
+    cluster_update_interval = int(cluster_update_interval[:-1])
+
     for i, command in enumerate(commands, 1):
         print_command(command)
         execute_reroute_commands(es_host, [command])
@@ -175,6 +182,9 @@ def print_execute_reroutes(es_host, commands):
         )
         wait_for_no_relocations(es_host)
         check_raise_health(es_host)  # check the cluster is still good
+        # Wait for minimum update interval or ES might still think there's not
+        # enough space for the next reroute.
+        sleep(cluster_update_interval + 1)
 
 
 @click.command()
