@@ -164,9 +164,23 @@ def print_execute_reroutes(es_host, commands):
 
 @click.command()
 @click.argument('es_host')
-@click.option('--iterations', default=1, type=int)
-@click.option('--attr', multiple=True)
-@click.option('--commit', is_flag=True, default=False)
+@click.option(
+    '--iterations',
+    default=1,
+    type=int,
+    help='Number of iterations (swaps) to execute.',
+)
+@click.option(
+    '--attr',
+    multiple=True,
+    help='Node attributes in form key=value.',
+)
+@click.option(
+    '--commit',
+    is_flag=True,
+    default=False,
+    help='Whether to actually execute the shard reroutes.',
+)
 def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
     # Parse out any attrs
     attrs = {}
