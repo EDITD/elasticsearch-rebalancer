@@ -60,7 +60,7 @@ def execute_reroute_commands(es_host, commands):
     })
 
 
-def get_transient_cluster_setting(es_host, path):
+def get_transient_cluster_setting(es_host, path, default=None):
     attrs = path.split('.')
     settings = get_cluster_settings(es_host)
 
@@ -68,7 +68,7 @@ def get_transient_cluster_setting(es_host, path):
     for attr in attrs:
         value = value.get(attr)
         if not value:
-            return
+            return default
     return value
 
 
