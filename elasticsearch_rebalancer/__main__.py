@@ -6,10 +6,11 @@ from humanize import naturalsize
 from .util import (
     check_es_cluster_health,
     combine_nodes_and_shards,
-    es_request,
+    execute_reroute_commands,
     get_node_fs_stats,
     get_ordred_nodes_and_average_used,
     get_shards,
+    wait_for_no_relocations,
 )
 
 
@@ -117,10 +118,42 @@ def attempt_to_find_swap(nodes, shards):
     ]
 
 
-def execute_reroute(es_host, reroute_commands):
-    es_request(es_host, '_cluster/reroute', method=requests.post, json={
-        'commands': reroute_commands,
-    })
+def print_execute_reroutes(es_host, commands):
+    for command in commands:
+        args = command['move']
+        click.echo((
+            f'> Executing reroute of {args["index"]}-{args["shard"]} '
+            f'from {args["from_node"]} -> {args["to_node"]}'
+        ))
+
+    try:
+        execute_reroute_commands(es_host, commands)
+    except requests.HTTPError as e:
+        if e.status_code != 400:
+            raise
+
+    # Parallel reroute worked - so just wait & return
+    else:
+        click.echo('Waiting for relocations to complete...')
+        wait_for_no_relocations(es_host)
+        return
+
+    # Now try to execute the reroutes one by one - it's likely that ES rejected the
+    # parallel re-route because it would push the max node over the disk threshold.
+    # So now attempt to reroute one shard at a time - first the big shard off the
+    # big node, which should make space for the returning shard.
+    click.echo(click.style(
+        'Parallel rerouting failed! Attempting shard by shard...',
+        'yellow',
+    ))
+
+    for i, command in enumerate(commands, 1):
+        execute_reroute_commands(es_host, [command])
+
+        click.echo(
+            f'Waiting for relocation to complete ({i}/{len(commands)})...',
+        )
+        wait_for_no_relocations(es_host)
 
 
 @click.command()
