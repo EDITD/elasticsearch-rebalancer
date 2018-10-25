@@ -103,6 +103,8 @@ def attempt_to_find_swap(nodes, shards):
     ))
 
     return [
+        # Note: it's important that the large shard is moved off the full-er node
+        # first in the case where we have to do them one by one.
         {
             'move': {
                 'index': max_shard['index'],
