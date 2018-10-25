@@ -22,7 +22,7 @@ if __name__ == '__main__':
         entry_points={
             'console_scripts': (
                 (
-                    'elasticsearch-rebalance='
+                    'es-rebalance='
                     'elasticsearch_rebalancer.__main__:rebalance_elasticsearch'
                 ),
             ),
