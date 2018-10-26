@@ -270,7 +270,7 @@ def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
             click.echo()
 
         if commit:
-            print_execute_reroutes(es_host, reroute_commands)
+            print_execute_reroutes(es_host, all_reroute_commands)
 
     except requests.HTTPError as e:
         click.echo(click.style(e.response.content, 'yellow'))
