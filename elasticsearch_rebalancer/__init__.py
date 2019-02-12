@@ -303,7 +303,3 @@ def rebalance_elasticsearch(
 
     click.echo(f'# Cluster rebalanced with {len(all_reroute_commands)} reroutes!')
     click.echo()
-
-
-if __name__ == '__main__':
-    rebalance_elasticsearch()
