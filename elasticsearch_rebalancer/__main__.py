@@ -9,8 +9,7 @@ from .util import (
     check_cluster_health,
     combine_nodes_and_shards,
     execute_reroute_commands,
-    get_node_fs_stats,
-    get_ordred_nodes_and_average_used,
+    get_nodes,
     get_shards,
     get_transient_cluster_setting,
     set_transient_cluster_setting,
@@ -29,30 +28,25 @@ def format_size(value):
 
 
 def attempt_to_find_swap(nodes, shards):
-    ordered_nodes, average = get_ordred_nodes_and_average_used(nodes)
-    node_name_to_shards, index_to_node_names = combine_nodes_and_shards(nodes, shards)
+    ordered_nodes, node_name_to_shards, index_to_node_names = (
+        combine_nodes_and_shards(nodes, shards)
+    )
 
-    for node in reversed(ordered_nodes):  # biggest to smallest node
-        if node['name'] in node_name_to_shards:
-            max_node = node
-            break
-    else:
-        raise BalanceException('Could not find max node with shards!')
+    min_node = ordered_nodes[0]
+    max_node = ordered_nodes[-1]
 
-    for node in ordered_nodes:
-        if node['name'] in node_name_to_shards:
-            min_node = node
-            break
-    else:
-        raise BalanceException('Could not find min node with shards!')
+    average_weight = (
+        sum(node['weight'] for node in ordered_nodes)
+        / len(ordered_nodes)
+    )
 
-    min_used = min_node['used_percent']
-    max_used = max_node['used_percent']
-    spread_used = round(max_used - min_used, 2)
+    min_weight = min_node['weight']
+    max_weight = max_node['weight']
+    spread_used = round(max_weight - min_weight, 2)
 
     click.echo((
         f'> Disk used over {len(nodes)} nodes: '
-        f'average={average}%, min={min_used}%, max={max_used}%, spread={spread_used}%'
+        f'average={average_weight}, min={min_weight}, max={max_weight}, spread={spread_used}'
     ))
 
     max_node_shards = node_name_to_shards[max_node['name']]
@@ -78,34 +72,25 @@ def attempt_to_find_swap(nodes, shards):
             f'{max_node["name"]}!'
         ))
 
-    old_min_percent = min_node['used_percent']
-    old_max_percent = max_node['used_percent']
-
     # Update the shard + node info for the next iteration
     max_shard['node'] = min_node['name']
-    min_node['used_bytes'] += max_shard['size_in_bytes'] - min_shard['size_in_bytes']
-    min_node['used_percent'] = round(
-        min_node['used_bytes'] / min_node['total_bytes'] * 100, 2,
-    )
+    min_node['weight'] += max_shard['weight'] - min_shard['weight']
 
     min_shard['node'] = max_node['name']
-    max_node['used_bytes'] += min_shard['size_in_bytes'] - max_shard['size_in_bytes']
-    max_node['used_percent'] = round(
-        max_node['used_bytes'] / max_node['total_bytes'] * 100, 2,
-    )
+    max_node['weight'] += min_shard['weight'] - max_shard['weight']
 
     click.echo((
         '> Recommended swap for: '
-        f'{max_shard["id"]} ({format_size(max_shard["size_in_bytes"])}) <> '
-        f'{min_shard["id"]} ({format_size(min_shard["size_in_bytes"])})'
+        f'{max_shard["id"]} ({format_size(max_shard["weight"])}) <> '
+        f'{min_shard["id"]} ({format_size(min_shard["weight"])})'
     ))
     click.echo((
         f'  maxNode: {max_node["name"]} '
-        f'({old_max_percent}% -> {max_node["used_percent"]}%)'
+        f'({max_weight} -> {max_node["weight"]})'
     ))
     click.echo((
         f'  minNode: {min_node["name"]} '
-        f'({old_min_percent}% -> {min_node["used_percent"]}%)'
+        f'({min_weight} -> {min_node["weight"]})'
     ))
 
     return [
@@ -208,9 +193,21 @@ def print_execute_reroutes(es_host, commands):
     '--commit',
     is_flag=True,
     default=False,
-    help='Whether to actually execute the shard reroutes.',
+    help='Execute the shard reroutes (default print only).',
 )
-def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
+@click.option(
+    '--print-state',
+    is_flag=True,
+    default=False,
+    help='Print the current nodes & weights and exit.',
+)
+def rebalance_elasticsearch(
+    es_host,
+    iterations=1,
+    attr=None,
+    commit=False,
+    print_state=False,
+):
     # Parse out any attrs
     attrs = {}
     if attr:
@@ -227,6 +224,9 @@ def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
     click.echo()
 
     if commit:
+        if print_state:
+            raise click.ClickException('Cannot have --commit and --print-state!')
+
         # Check we have a healthy cluster
         check_raise_health(es_host)
 
@@ -241,7 +241,7 @@ def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
 
     try:
         click.echo('Loading nodes...')
-        nodes = get_node_fs_stats(es_host, attrs=attrs)
+        nodes = get_nodes(es_host, attrs=attrs)
         if not nodes:
             raise BalanceException(f'No nodes found!')
 
@@ -256,7 +256,16 @@ def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
         click.echo(f'> Found {len(shards)} shards')
         click.echo()
 
-        click.echo(f'Investigating rebalance options...')
+        if print_state:
+            click.echo('Nodes ordered by weight:')
+            ordered_nodes, _, _ = combine_nodes_and_shards(nodes, shards)
+
+            for node in ordered_nodes:
+                click.echo(f'> Node: {node["name"]}, weight: {node["weight"]}')
+
+            return
+
+        click.echo('Investigating rebalance options...')
 
         all_reroute_commands = []
 
@@ -286,7 +295,7 @@ def rebalance_elasticsearch(es_host, iterations=1, attr=None, commit=False):
                 es_host, 'cluster.routing.rebalance.enable', previous_rebalance,
             )
 
-    click.echo('# Cluster rebalanced!')
+    click.echo(f'# Cluster rebalanced with {len(all_reroute_commands)} reroutes!')
     click.echo()
 
 
