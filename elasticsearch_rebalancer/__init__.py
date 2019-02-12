@@ -177,129 +177,130 @@ def print_execute_reroutes(es_host, commands):
         sleep(cluster_update_interval + 1)
 
 
-@click.command()
-@click.argument('es_host')
-@click.option(
-    '--iterations',
-    default=1,
-    type=int,
-    help='Number of iterations (swaps) to execute.',
-)
-@click.option(
-    '--attr',
-    multiple=True,
-    help='Node attributes in form key=value.',
-)
-@click.option(
-    '--commit',
-    is_flag=True,
-    default=False,
-    help='Execute the shard reroutes (default print only).',
-)
-@click.option(
-    '--print-state',
-    is_flag=True,
-    default=False,
-    help='Print the current nodes & weights and exit.',
-)
-def rebalance_elasticsearch(
-    es_host,
-    iterations=1,
-    attr=None,
-    commit=False,
-    print_state=False,
-    get_shard_weight_function=get_shard_size,
-):
-    # Parse out any attrs
-    attrs = {}
-    if attr:
-        for a in attr:
-            try:
-                key, value = a.split('=', 1)
-            except ValueError:
-                raise BalanceException('Invalid attr, specify as key=value!')
-            attrs[key] = value
+def make_rebalance_elasticsearch_cli(get_shard_weight_function=get_shard_size):
+    @click.command()
+    @click.argument('es_host')
+    @click.option(
+        '--iterations',
+        default=1,
+        type=int,
+        help='Number of iterations (swaps) to execute.',
+    )
+    @click.option(
+        '--attr',
+        multiple=True,
+        help='Node attributes in form key=value.',
+    )
+    @click.option(
+        '--commit',
+        is_flag=True,
+        default=False,
+        help='Execute the shard reroutes (default print only).',
+    )
+    @click.option(
+        '--print-state',
+        is_flag=True,
+        default=False,
+        help='Print the current nodes & weights and exit.',
+    )
+    def rebalance_elasticsearch(
+        es_host,
+        iterations=1,
+        attr=None,
+        commit=False,
+        print_state=False,
+    ):
+        # Parse out any attrs
+        attrs = {}
+        if attr:
+            for a in attr:
+                try:
+                    key, value = a.split('=', 1)
+                except ValueError:
+                    raise BalanceException('Invalid attr, specify as key=value!')
+                attrs[key] = value
 
-    click.echo()
-    click.echo('# Elasticsearch Rebalancer')
-    click.echo(f'> Target: {click.style(es_host, bold=True)}')
-    click.echo()
-
-    if commit:
-        if print_state:
-            raise click.ClickException('Cannot have --commit and --print-state!')
-
-        # Check we have a healthy cluster
-        check_raise_health(es_host)
-
-        click.echo('Disabling cluster rebalance...')
-        # Save the old value to restore later
-        previous_rebalance = get_transient_cluster_setting(
-            es_host, 'cluster.routing.rebalance.enable',
-        )
-        set_transient_cluster_setting(
-            es_host, 'cluster.routing.rebalance.enable', 'none',
-        )
-
-    try:
-        click.echo('Loading nodes...')
-        nodes = get_nodes(es_host, attrs=attrs)
-        if not nodes:
-            raise BalanceException(f'No nodes found!')
-
-        click.echo(f'> Found {len(nodes)} nodes')
+        click.echo()
+        click.echo('# Elasticsearch Rebalancer')
+        click.echo(f'> Target: {click.style(es_host, bold=True)}')
         click.echo()
 
-        click.echo('Loading shards...')
-        shards = get_shards(
-            es_host,
-            attrs=attrs,
-            get_shard_weight_function=get_shard_weight_function,
-        )
-        if not shards:
-            raise BalanceException(f'No shards found!')
-
-        click.echo(f'> Found {len(shards)} shards')
-        click.echo()
-
-        if print_state:
-            click.echo('Nodes ordered by weight:')
-            ordered_nodes, _, _ = combine_nodes_and_shards(nodes, shards)
-
-            for node in ordered_nodes:
-                click.echo(f'> Node: {node["name"]}, weight: {node["weight"]}')
-
-            return
-
-        click.echo('Investigating rebalance options...')
-
-        all_reroute_commands = []
-
-        for i in range(iterations):
-            click.echo(f'> Iteration {i}')
-            reroute_commands = attempt_to_find_swap(nodes, shards)
-
-            if reroute_commands:
-                all_reroute_commands.extend(reroute_commands)
-
-            click.echo()
-
         if commit:
-            print_execute_reroutes(es_host, all_reroute_commands)
+            if print_state:
+                raise click.ClickException('Cannot have --commit and --print-state!')
 
-    except requests.HTTPError as e:
-        click.echo(click.style(e.response.content, 'yellow'))
-        raise BalanceException(f'Invalid ES response: {e.response.status_code}')
+            # Check we have a healthy cluster
+            check_raise_health(es_host)
 
-    # Always restore the previous rebalance setting
-    finally:
-        if commit:
-            click.echo(
-                f'Restoring previous rebalance setting ({previous_rebalance})...',
+            click.echo('Disabling cluster rebalance...')
+            # Save the old value to restore later
+            previous_rebalance = get_transient_cluster_setting(
+                es_host, 'cluster.routing.rebalance.enable',
             )
             set_transient_cluster_setting(
-                es_host, 'cluster.routing.rebalance.enable', previous_rebalance,
+                es_host, 'cluster.routing.rebalance.enable', 'none',
             )
 
-    click.echo(f'# Cluster rebalanced with {len(all_reroute_commands)} reroutes!')
-    click.echo()
+        try:
+            click.echo('Loading nodes...')
+            nodes = get_nodes(es_host, attrs=attrs)
+            if not nodes:
+                raise BalanceException(f'No nodes found!')
+
+            click.echo(f'> Found {len(nodes)} nodes')
+            click.echo()
+
+            click.echo('Loading shards...')
+            shards = get_shards(
+                es_host,
+                attrs=attrs,
+                get_shard_weight_function=get_shard_weight_function,
+            )
+            if not shards:
+                raise BalanceException(f'No shards found!')
+
+            click.echo(f'> Found {len(shards)} shards')
+            click.echo()
+
+            if print_state:
+                click.echo('Nodes ordered by weight:')
+                ordered_nodes, _, _ = combine_nodes_and_shards(nodes, shards)
+
+                for node in ordered_nodes:
+                    click.echo(f'> Node: {node["name"]}, weight: {node["weight"]}')
+
+                return
+
+            click.echo('Investigating rebalance options...')
+
+            all_reroute_commands = []
+
+            for i in range(iterations):
+                click.echo(f'> Iteration {i}')
+                reroute_commands = attempt_to_find_swap(nodes, shards)
+
+                if reroute_commands:
+                    all_reroute_commands.extend(reroute_commands)
+
+                click.echo()
+
+            if commit:
+                print_execute_reroutes(es_host, all_reroute_commands)
+
+        except requests.HTTPError as e:
+            click.echo(click.style(e.response.content, 'yellow'))
+            raise BalanceException(f'Invalid ES response: {e.response.status_code}')
+
+        # Always restore the previous rebalance setting
+        finally:
+            if commit:
+                click.echo(
+                    f'Restoring previous rebalance setting ({previous_rebalance})...',
+                )
+                set_transient_cluster_setting(
+                    es_host, 'cluster.routing.rebalance.enable', previous_rebalance,
+                )
+
+        click.echo(f'# Cluster rebalanced with {len(all_reroute_commands)} reroutes!')
+        click.echo()
+    return rebalance_elasticsearch
