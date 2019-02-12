@@ -10,6 +10,7 @@ from .util import (
     combine_nodes_and_shards,
     execute_reroute_commands,
     get_nodes,
+    get_shard_size,
     get_shards,
     get_transient_cluster_setting,
     set_transient_cluster_setting,
@@ -207,6 +208,7 @@ def rebalance_elasticsearch(
     attr=None,
     commit=False,
     print_state=False,
+    get_shard_weight_function=get_shard_size,
 ):
     # Parse out any attrs
     attrs = {}
@@ -249,7 +251,11 @@ def rebalance_elasticsearch(
         click.echo()
 
         click.echo('Loading shards...')
-        shards = get_shards(es_host, attrs=attrs)
+        shards = get_shards(
+            es_host,
+            attrs=attrs,
+            get_shard_weight_function=get_shard_weight_function,
+        )
         if not shards:
             raise BalanceException(f'No shards found!')
 

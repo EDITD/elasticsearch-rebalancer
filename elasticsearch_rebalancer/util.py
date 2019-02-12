@@ -91,11 +91,11 @@ def get_nodes(es_host, attrs=None):
     return filtered_nodes
 
 
-def get_shard_weight(shard):
+def get_shard_size(shard):
     return int(shard['store'])
 
 
-def get_shards(es_host, attrs=None):
+def get_shards(es_host, attrs=None, get_shard_weight_function=get_shard_size):
     indices = es_request(es_host, '_settings')
 
     filtered_index_names = []
@@ -131,7 +131,7 @@ def get_shards(es_host, attrs=None):
             continue
 
         shard['id'] = f'{shard["index"]}-{shard["shard"]}'
-        shard['weight'] = get_shard_weight(shard)
+        shard['weight'] = get_shard_weight_function(shard)
 
         filtered_shards.append(shard)
     return filtered_shards
