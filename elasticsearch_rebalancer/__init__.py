@@ -24,15 +24,32 @@ class BalanceException(click.ClickException):
         super(BalanceException, self).__init__(message)
 
 
+def find_node(nodes, node_name=None):
+    if not isinstance(nodes, list):
+        nodes = list(nodes)
+
+    if not node_name:
+        return nodes[0]
+
+    for node in nodes:
+        if node['name'] == node_name:
+            return node
+
+    raise ValueError(f'Could not find node: {node_name}')
 
 
-def attempt_to_find_swap(nodes, shards):
+def attempt_to_find_swap(
+    nodes, shards,
+    max_node_name=None,
+    min_node_name=None,
+    format_shard_weight_function=lambda weight: weight,
+):
     ordered_nodes, node_name_to_shards, index_to_node_names = (
         combine_nodes_and_shards(nodes, shards)
     )
 
-    min_node = ordered_nodes[0]
-    max_node = ordered_nodes[-1]
+    min_node = find_node(ordered_nodes, min_node_name)
+    max_node = find_node(reversed(ordered_nodes), max_node_name)
 
     average_weight = (
         sum(node['weight'] for node in ordered_nodes)
@@ -206,12 +223,24 @@ def make_rebalance_elasticsearch_cli(
         default=False,
         help='Print the current nodes & weights and exit.',
     )
+    @click.option(
+        '--max-node',
+        default=None,
+        help='Force the max node to consider for shard swaps.',
+    )
+    @click.option(
+        '--min-node',
+        default=None,
+        help='Force the min node to consider for shard swaps.',
+    )
     def rebalance_elasticsearch(
         es_host,
         iterations=1,
         attr=None,
         commit=False,
         print_state=False,
+        max_node=None,
+        min_node=None,
     ):
         # Parse out any attrs
         attrs = {}
