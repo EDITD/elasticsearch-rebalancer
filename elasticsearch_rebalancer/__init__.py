@@ -1,3 +1,4 @@
+from collections import deque
 from time import sleep
 
 import click
@@ -226,11 +227,13 @@ def make_rebalance_elasticsearch_cli(
     @click.option(
         '--max-node',
         default=None,
+        multiple=True,
         help='Force the max node to consider for shard swaps.',
     )
     @click.option(
         '--min-node',
         default=None,
+        multiple=True,
         help='Force the min node to consider for shard swaps.',
     )
     def rebalance_elasticsearch(
@@ -251,6 +254,12 @@ def make_rebalance_elasticsearch_cli(
                 except ValueError:
                     raise BalanceException('Invalid attr, specify as key=value!')
                 attrs[key] = value
+
+        # Turn min/max node lists into deque instances
+        if min_node:
+            min_node = deque(min_node)
+        if max_node:
+            max_node = deque(max_node)
 
         click.echo()
         click.echo('# Elasticsearch Rebalancer')
@@ -311,8 +320,8 @@ def make_rebalance_elasticsearch_cli(
                 click.echo(f'> Iteration {i}')
                 reroute_commands = attempt_to_find_swap(
                     nodes, shards,
-                    max_node_name=max_node,
-                    min_node_name=min_node,
+                    max_node_name=max_node[0] if max_node else None,
+                    min_node_name=min_node[0] if min_node else None,
                     format_shard_weight_function=format_shard_weight_function,
                 )
 
@@ -320,6 +329,11 @@ def make_rebalance_elasticsearch_cli(
                     all_reroute_commands.extend(reroute_commands)
 
                 click.echo()
+
+                if min_node:
+                    min_node.rotate()
+                if max_node:
+                    max_node.rotate()
 
             if commit:
                 print_execute_reroutes(es_host, all_reroute_commands)
