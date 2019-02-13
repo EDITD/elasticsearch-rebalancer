@@ -3,6 +3,8 @@ from time import sleep
 
 import requests
 
+from humanize import naturalsize
+
 
 def matches_attrs(attrs, match_attrs):
     match_attrs = match_attrs or {}
@@ -16,11 +18,7 @@ def es_request(es_host, endpoint, method=requests.get, **kwargs):
         **kwargs,
     )
 
-    try:
-        response.raise_for_status()
-    except requests.HTTPError:
-        raise
-
+    response.raise_for_status()
     return response.json()
 
 
@@ -78,7 +76,7 @@ def set_transient_cluster_setting(es_host, path, value):
     })
 
 
-def get_node_fs_stats(es_host, attrs=None):
+def get_nodes(es_host, attrs=None):
     nodes = es_request(es_host, f'_nodes/stats/fs')['nodes']
     filtered_nodes = []
 
@@ -87,19 +85,19 @@ def get_node_fs_stats(es_host, attrs=None):
             continue
 
         node_data['id'] = node_id
-        stats = node_data['fs']['total']
-        node_data['used_bytes'] = stats['total_in_bytes'] - stats['available_in_bytes']
-        node_data['total_bytes'] = stats['total_in_bytes']
-
-        node_data['used_percent'] = round(
-            node_data['used_bytes'] / node_data['total_bytes'] * 100, 2,
-        )
-
         filtered_nodes.append(node_data)
     return filtered_nodes
 
 
-def get_shards(es_host, attrs=None):
+def get_shard_size(shard):
+    return int(shard['store'])
+
+
+def format_shard_size(weight):
+    return naturalsize(weight, binary=True)
+
+
+def get_shards(es_host, attrs=None, get_shard_weight_function=get_shard_size):
     indices = es_request(es_host, '_settings')
 
     filtered_index_names = []
@@ -135,25 +133,10 @@ def get_shards(es_host, attrs=None):
             continue
 
         shard['id'] = f'{shard["index"]}-{shard["shard"]}'
-        shard['size_in_bytes'] = int(shard['store'])
+        shard['weight'] = get_shard_weight_function(shard)
 
         filtered_shards.append(shard)
-
     return filtered_shards
-
-
-def get_ordred_nodes_and_average_used(nodes):
-    sum_total_bytes = 0
-    sum_used_bytes = 0
-
-    for node in nodes:
-        sum_total_bytes += node['total_bytes']
-        sum_used_bytes += node['used_bytes']
-
-    average_used_percentage = round(sum_used_bytes / sum_total_bytes * 100, 2)
-
-    ordered_nodes = sorted(nodes, key=lambda node: node['used_percent'])
-    return ordered_nodes, average_used_percentage
 
 
 def combine_nodes_and_shards(nodes, shards):
@@ -165,8 +148,21 @@ def combine_nodes_and_shards(nodes, shards):
         index_to_node_names[shard['index']].append(shard['node'])
 
     node_name_to_shards = {
-        key: sorted(shards, key=lambda shard: shard['size_in_bytes'])
+        key: sorted(shards, key=lambda shard: shard['weight'])
         for key, shards in node_name_to_shards.items()
     }
 
-    return node_name_to_shards, index_to_node_names
+    ordered_nodes = []
+    for node in nodes:
+        if node['name'] not in node_name_to_shards:
+            continue
+
+        node['weight'] = sum(
+            shard['weight'] for shard in node_name_to_shards[node['name']]
+        )
+
+        ordered_nodes.append(node)
+
+    ordered_nodes = sorted(ordered_nodes, key=lambda node: node['weight'])
+
+    return ordered_nodes, node_name_to_shards, index_to_node_names

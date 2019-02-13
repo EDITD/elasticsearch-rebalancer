@@ -7,7 +7,7 @@ By default ES balances shards over nodes by considering:
 + The number of shards / node
 + The number of shards / index / node
 
-Which is great if every shard is the same size, but in reality this is not the case. Without considering the size of shards (except for watermarks) it's possible to end up with some nodes almost at watermark alongside others that are almost empty. [This blog post](http://engineering.simplymeasured.com/dev-blog/2015/07/08/balancing-elasticsearch-cluster-by-shard-size.html) describes it well - this script is inspired by that project.
+Which is great if every shard is the same size, but in reality this is not the case. Without considering the size of shards (except for watermarks) it's possible to end up with some nodes almost at watermark alongside others that are almost empty. [This blog post](http://engineering.simplymeasured.com/dev-blog/2015/07/08/balancing-elasticsearch-cluster-by-shard-size.html) describes it well - this script is inspired by that project. As well as size this logic can be applied to any weighting of shards.
 
 ## How does it work?
 
@@ -23,6 +23,26 @@ Usage: es-rebalance [OPTIONS] ES_HOST
 Options:
   --iterations INTEGER  Number of iterations (swaps) to execute.
   --attr TEXT           Node attributes in form key=value.
-  --commit              Whether to actually execute the shard reroutes.
+  --commit              Execute the shard reroutes (default print only).
+  --print-state         Print the current nodes & weights and exit.
+  --max-node TEXT       Force the max node to consider for shard swaps.
+  --min-node TEXT       Force the min node to consider for shard swaps.
   --help                Show this message and exit.
+```
+
+## Custom Weighting
+
+By default the `es-rebalance` script uses shard size (in bytes) as the weight indicator. It is possible to customise this by writing your own CLI - for example:
+
+```py
+from elasticsearch_rebalancer import make_rebalance_elasticsearch_cli
+
+def get_shard_weight(shard):
+    return 1
+
+if __name__ == '__main__':
+    rebalance_elasticsearch = make_rebalance_elasticsearch_cli(
+        get_shard_weight_function=get_shard_weight,
+    )
+    rebalance_elasticsearch()
 ```
