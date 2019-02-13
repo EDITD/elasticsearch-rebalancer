@@ -11,7 +11,7 @@ if __name__ == '__main__':
     setup(
         name='elasticsearch-rebalancer',
         description='Internal tool for ES index/alias creation',
-        version='0.1',
+        version='0.2',
         author='EDITED devs',
         author_email='dev@edited.com',
         packages=[
