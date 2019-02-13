@@ -3,12 +3,12 @@ from time import sleep
 import click
 import requests
 
-from humanize import naturalsize
 
 from .util import (
     check_cluster_health,
     combine_nodes_and_shards,
     execute_reroute_commands,
+    format_shard_size,
     get_nodes,
     get_shard_size,
     get_shards,
@@ -24,8 +24,6 @@ class BalanceException(click.ClickException):
         super(BalanceException, self).__init__(message)
 
 
-def format_size(value):
-    return naturalsize(value, binary=True)
 
 
 def attempt_to_find_swap(nodes, shards):
@@ -46,7 +44,7 @@ def attempt_to_find_swap(nodes, shards):
     spread_used = round(max_weight - min_weight, 2)
 
     click.echo((
-        f'> Disk used over {len(nodes)} nodes: '
+        f'> Weight used over {len(nodes)} nodes: '
         f'average={average_weight}, min={min_weight}, max={max_weight}, spread={spread_used}'
     ))
 
@@ -82,16 +80,18 @@ def attempt_to_find_swap(nodes, shards):
 
     click.echo((
         '> Recommended swap for: '
-        f'{max_shard["id"]} ({format_size(max_shard["weight"])}) <> '
-        f'{min_shard["id"]} ({format_size(min_shard["weight"])})'
+        f'{max_shard["id"]} ({format_shard_weight_function(max_shard["weight"])}) <> '
+        f'{min_shard["id"]} ({format_shard_weight_function(min_shard["weight"])})'
     ))
     click.echo((
         f'  maxNode: {max_node["name"]} '
-        f'({max_weight} -> {max_node["weight"]})'
+        f'({format_shard_weight_function(max_weight)} '
+        f'-> {format_shard_weight_function(max_node["weight"])})'
     ))
     click.echo((
         f'  minNode: {min_node["name"]} '
-        f'({min_weight} -> {min_node["weight"]})'
+        f'({format_shard_weight_function(min_weight)} '
+        f'-> {format_shard_weight_function(min_node["weight"])})'
     ))
 
     return [
@@ -177,7 +177,10 @@ def print_execute_reroutes(es_host, commands):
         sleep(cluster_update_interval + 1)
 
 
-def make_rebalance_elasticsearch_cli(get_shard_weight_function=get_shard_size):
+def make_rebalance_elasticsearch_cli(
+    get_shard_weight_function=get_shard_size,
+    format_shard_weight_function=format_shard_size,
+):
     @click.command()
     @click.argument('es_host')
     @click.option(
@@ -277,7 +280,12 @@ def make_rebalance_elasticsearch_cli(get_shard_weight_function=get_shard_size):
 
             for i in range(iterations):
                 click.echo(f'> Iteration {i}')
-                reroute_commands = attempt_to_find_swap(nodes, shards)
+                reroute_commands = attempt_to_find_swap(
+                    nodes, shards,
+                    max_node_name=max_node,
+                    min_node_name=min_node,
+                    format_shard_weight_function=format_shard_weight_function,
+                )
 
                 if reroute_commands:
                     all_reroute_commands.extend(reroute_commands)

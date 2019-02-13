@@ -3,6 +3,8 @@ from time import sleep
 
 import requests
 
+from humanize import naturalsize
+
 
 def matches_attrs(attrs, match_attrs):
     match_attrs = match_attrs or {}
@@ -93,6 +95,10 @@ def get_nodes(es_host, attrs=None):
 
 def get_shard_size(shard):
     return int(shard['store'])
+
+
+def format_shard_size(weight):
+    return naturalsize(weight, binary=True)
 
 
 def get_shards(es_host, attrs=None, get_shard_weight_function=get_shard_size):
