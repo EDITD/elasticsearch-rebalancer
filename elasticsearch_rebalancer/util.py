@@ -1,4 +1,5 @@
 from collections import defaultdict
+from fnmatch import fnmatch
 from time import sleep
 
 import requests
@@ -97,7 +98,12 @@ def format_shard_size(weight):
     return naturalsize(weight, binary=True)
 
 
-def get_shards(es_host, attrs=None, get_shard_weight_function=get_shard_size):
+def get_shards(
+    es_host,
+    attrs=None,
+    index_name_filter=None,
+    get_shard_weight_function=get_shard_size,
+):
     indices = es_request(es_host, '_settings')
 
     filtered_index_names = []
@@ -111,6 +117,9 @@ def get_shards(es_host, attrs=None, get_shard_weight_function=get_shard_size):
             .get('require', {})
         )
         if not matches_attrs(index_attrs, attrs):
+            continue
+
+        if index_name_filter and not fnmatch(index_name, index_name_filter):
             continue
 
         filtered_index_names.append(index_name)
