@@ -225,6 +225,11 @@ def make_rebalance_elasticsearch_cli(
         help='Print the current nodes & weights and exit.',
     )
     @click.option(
+        '--index-name',
+        default=None,
+        help='Filter the indices for swaps by name, supports wildcards.',
+    )
+    @click.option(
         '--max-node',
         default=None,
         multiple=True,
@@ -242,6 +247,7 @@ def make_rebalance_elasticsearch_cli(
         attr=None,
         commit=False,
         print_state=False,
+        index_name=None,
         max_node=None,
         min_node=None,
     ):
@@ -295,6 +301,7 @@ def make_rebalance_elasticsearch_cli(
             shards = get_shards(
                 es_host,
                 attrs=attrs,
+                index_name_filter=index_name,
                 get_shard_weight_function=get_shard_weight_function,
             )
             if not shards:
