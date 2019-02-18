@@ -52,18 +52,15 @@ def attempt_to_find_swap(
     min_node = find_node(ordered_nodes, min_node_name)
     max_node = find_node(reversed(ordered_nodes), max_node_name)
 
-    average_weight = (
-        sum(node['weight'] for node in ordered_nodes)
-        / len(ordered_nodes)
-    )
-
     min_weight = min_node['weight']
     max_weight = max_node['weight']
     spread_used = round(max_weight - min_weight, 2)
 
     click.echo((
         f'> Weight used over {len(nodes)} nodes: '
-        f'average={average_weight}, min={min_weight}, max={max_weight}, spread={spread_used}'
+        f'min={format_shard_weight_function(min_weight)}, '
+        f'max={format_shard_weight_function(max_weight)}, '
+        f'spread={spread_used}'
     ))
 
     max_node_shards = node_name_to_shards[max_node['name']]
@@ -315,7 +312,11 @@ def make_rebalance_elasticsearch_cli(
                 ordered_nodes, _, _ = combine_nodes_and_shards(nodes, shards)
 
                 for node in ordered_nodes:
-                    click.echo(f'> Node: {node["name"]}, weight: {node["weight"]}')
+                    click.echo(
+                        f'> Node: {node["name"]}, '
+                        f'weight: {format_shard_weight_function(node["weight"])}'
+                        f' ({node["weight_percentage"]})%',
+                    )
 
                 return
 
