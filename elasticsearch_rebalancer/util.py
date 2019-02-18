@@ -174,4 +174,10 @@ def combine_nodes_and_shards(nodes, shards):
 
     ordered_nodes = sorted(ordered_nodes, key=lambda node: node['weight'])
 
+    # min_weight = ordered_nodes[0]['weight']
+    max_weight = ordered_nodes[-1]['weight']
+
+    for node in ordered_nodes:
+        node['weight_percentage'] = round((node['weight'] / max_weight) * 100, 2)
+
     return ordered_nodes, node_name_to_shards, index_to_node_names
