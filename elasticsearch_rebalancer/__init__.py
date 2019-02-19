@@ -61,7 +61,7 @@ def attempt_to_find_swap(
         f'> Weight used over {len(nodes)} nodes: '
         f'min={format_shard_weight_function(min_weight)}, '
         f'max={format_shard_weight_function(max_weight)}, '
-        f'spread={spread_used}'
+        f'spread={format_shard_weight_function(spread_used)}'
     ))
 
     max_node_shards = node_name_to_shards[max_node['name']]
@@ -213,6 +213,23 @@ def print_execute_reroutes(es_host, commands):
         sleep(cluster_update_interval + 1)
 
 
+def print_node_shard_states(
+    nodes, shards,
+    format_shard_weight_function=format_shard_size,
+):
+    ordered_nodes, node_name_to_shards, _ = (
+        combine_nodes_and_shards(nodes, shards)
+    )
+
+    for node in ordered_nodes:
+        click.echo(
+            f'> Node: {node["name"]}, '
+            f'shards: {len(node_name_to_shards[node["name"]])}, '
+            f'weight: {format_shard_weight_function(node["weight"])}'
+            f' ({node["weight_percentage"]})%',
+        )
+
+
 def make_rebalance_elasticsearch_cli(
     get_shard_weight_function=get_shard_size,
     format_shard_weight_function=format_shard_size,
@@ -341,15 +358,10 @@ def make_rebalance_elasticsearch_cli(
 
             if print_state:
                 click.echo('Nodes ordered by weight:')
-                ordered_nodes, _, _ = combine_nodes_and_shards(nodes, shards)
-
-                for node in ordered_nodes:
-                    click.echo(
-                        f'> Node: {node["name"]}, '
-                        f'weight: {format_shard_weight_function(node["weight"])}'
-                        f' ({node["weight_percentage"]})%',
-                    )
-
+                print_node_shard_states(
+                    nodes, shards,
+                    format_shard_weight_function=format_shard_weight_function,
+                )
                 return
 
             click.echo('Investigating rebalance options...')
