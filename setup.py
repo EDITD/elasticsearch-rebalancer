@@ -10,7 +10,7 @@ REQUIREMENTS = (
 if __name__ == '__main__':
     setup(
         name='elasticsearch-rebalancer',
-        description='Internal tool for ES index/alias creation',
+        description='Pokes Elasticsearch to balance itself sensibly.',
         version='0.3',
         author='EDITED devs',
         author_email='dev@edited.com',
