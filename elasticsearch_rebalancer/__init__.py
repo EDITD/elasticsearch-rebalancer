@@ -40,10 +40,11 @@ def find_node(nodes, node_name=None):
 
 
 def attempt_to_find_swap(
-    nodes, shards,
+    nodes, shards, used_shards,
     max_node_name=None,
     min_node_name=None,
     format_shard_weight_function=lambda weight: weight,
+    one_way=False,
 ):
     ordered_nodes, node_name_to_shards, index_to_node_names = (
         combine_nodes_and_shards(nodes, shards)
@@ -60,14 +61,17 @@ def attempt_to_find_swap(
         f'> Weight used over {len(nodes)} nodes: '
         f'min={format_shard_weight_function(min_weight)}, '
         f'max={format_shard_weight_function(max_weight)}, '
-        f'spread={spread_used}'
+        f'spread={format_shard_weight_function(spread_used)}'
     ))
 
     max_node_shards = node_name_to_shards[max_node['name']]
     min_node_shards = node_name_to_shards[min_node['name']]
 
     for shard in reversed(max_node_shards):  # biggest to smallest shard
-        if min_node['name'] not in index_to_node_names[shard['index']]:
+        if (
+            shard['id'] not in used_shards
+            and min_node['name'] not in index_to_node_names[shard['index']]
+        ):
             max_shard = shard
             break
     else:
@@ -77,7 +81,10 @@ def attempt_to_find_swap(
         ))
 
     for shard in min_node_shards:
-        if max_node['name'] not in index_to_node_names[shard['index']]:
+        if (
+            shard['id'] not in used_shards
+            and max_node['name'] not in index_to_node_names[shard['index']]
+        ):
             min_shard = shard
             break
     else:
@@ -86,32 +93,42 @@ def attempt_to_find_swap(
             f'{max_node["name"]}!'
         ))
 
-    # Update the shard + node info for the next iteration
+    # Update shard + node info according to the reroutes
+    used_shards.add(max_shard['id'])
     max_shard['node'] = min_node['name']
-    min_node['weight'] += max_shard['weight'] - min_shard['weight']
+    min_node['weight'] += max_shard['weight']
+    max_node['weight'] -= max_shard['weight']
 
-    min_shard['node'] = max_node['name']
-    max_node['weight'] += min_shard['weight'] - max_shard['weight']
+    if not one_way:
+        used_shards.add(min_shard['id'])
+        min_shard['node'] = max_node['name']
+        min_node['weight'] -= min_shard['weight']
+        max_node['weight'] += min_shard['weight']
+
+    if one_way:
+        click.echo((
+            '> Recommended move for: '
+            f'{max_shard["id"]} ({format_shard_weight_function(max_shard["weight"])})'
+        ))
+    else:
+        click.echo((
+            '> Recommended swap for: '
+            f'{max_shard["id"]} ({format_shard_weight_function(max_shard["weight"])}) <> '
+            f'{min_shard["id"]} ({format_shard_weight_function(min_shard["weight"])})'
+        ))
 
     click.echo((
-        '> Recommended swap for: '
-        f'{max_shard["id"]} ({format_shard_weight_function(max_shard["weight"])}) <> '
-        f'{min_shard["id"]} ({format_shard_weight_function(min_shard["weight"])})'
-    ))
-    click.echo((
-        f'  maxNode: {max_node["name"]} '
+        f'  maxNode: {max_node["name"]} ({len(max_node_shards)} shards) '
         f'({format_shard_weight_function(max_weight)} '
         f'-> {format_shard_weight_function(max_node["weight"])})'
     ))
     click.echo((
-        f'  minNode: {min_node["name"]} '
+        f'  minNode: {min_node["name"]} ({len(min_node_shards)} shards) '
         f'({format_shard_weight_function(min_weight)} '
         f'-> {format_shard_weight_function(min_node["weight"])})'
     ))
 
-    return [
-        # Note: it's important that the large shard is moved off the full-er node
-        # first in the case where we have to do them one by one.
+    reroute_commands = [
         {
             'move': {
                 'index': max_shard['index'],
@@ -120,15 +137,19 @@ def attempt_to_find_swap(
                 'to_node': min_node['name'],
             },
         },
-        {
+    ]
+
+    if not one_way:
+        reroute_commands.append({
             'move': {
                 'index': min_shard['index'],
                 'shard': min_shard['shard'],
                 'from_node': min_node['name'],
                 'to_node': max_node['name'],
             },
-        },
-    ]
+        })
+
+    return reroute_commands
 
 
 def print_command(command):
@@ -192,6 +213,23 @@ def print_execute_reroutes(es_host, commands):
         sleep(cluster_update_interval + 1)
 
 
+def print_node_shard_states(
+    nodes, shards,
+    format_shard_weight_function=format_shard_size,
+):
+    ordered_nodes, node_name_to_shards, _ = (
+        combine_nodes_and_shards(nodes, shards)
+    )
+
+    for node in ordered_nodes:
+        click.echo(
+            f'> Node: {node["name"]}, '
+            f'shards: {len(node_name_to_shards[node["name"]])}, '
+            f'weight: {format_shard_weight_function(node["weight"])}'
+            f' ({node["weight_percentage"]})%',
+        )
+
+
 def make_rebalance_elasticsearch_cli(
     get_shard_weight_function=get_shard_size,
     format_shard_weight_function=format_shard_size,
@@ -238,6 +276,16 @@ def make_rebalance_elasticsearch_cli(
         multiple=True,
         help='Force the min node to consider for shard swaps.',
     )
+    @click.option(
+        '--one-way',
+        is_flag=True,
+        default=False,
+        help=(
+            'Disables shard swaps and simply moves max -> min. '
+            'Note after ES rebalancing is restored ES will attempt '
+            "to rebalance itself according to it's own heuristics."
+        ),
+    )
     def rebalance_elasticsearch(
         es_host,
         iterations=1,
@@ -247,6 +295,7 @@ def make_rebalance_elasticsearch_cli(
         index_name=None,
         max_node=None,
         min_node=None,
+        one_way=False,
     ):
         # Parse out any attrs
         attrs = {}
@@ -309,28 +358,26 @@ def make_rebalance_elasticsearch_cli(
 
             if print_state:
                 click.echo('Nodes ordered by weight:')
-                ordered_nodes, _, _ = combine_nodes_and_shards(nodes, shards)
-
-                for node in ordered_nodes:
-                    click.echo(
-                        f'> Node: {node["name"]}, '
-                        f'weight: {format_shard_weight_function(node["weight"])}'
-                        f' ({node["weight_percentage"]})%',
-                    )
-
+                print_node_shard_states(
+                    nodes, shards,
+                    format_shard_weight_function=format_shard_weight_function,
+                )
                 return
 
             click.echo('Investigating rebalance options...')
 
             all_reroute_commands = []
+            used_shards = set()
 
             for i in range(iterations):
                 click.echo(f'> Iteration {i}')
                 reroute_commands = attempt_to_find_swap(
                     nodes, shards,
+                    used_shards=used_shards,
                     max_node_name=max_node[0] if max_node else None,
                     min_node_name=min_node[0] if min_node else None,
                     format_shard_weight_function=format_shard_weight_function,
+                    one_way=one_way,
                 )
 
                 if reroute_commands:
