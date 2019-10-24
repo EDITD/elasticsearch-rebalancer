@@ -105,6 +105,9 @@ def attempt_to_find_swap(
         min_node['weight'] -= min_shard['weight']
         max_node['weight'] += min_shard['weight']
 
+        if min_node['weight'] >= max_node['weight']:
+            raise BalanceException('Cannot optimise shards any further!')
+
     if one_way:
         click.echo((
             '> Recommended move for: '
