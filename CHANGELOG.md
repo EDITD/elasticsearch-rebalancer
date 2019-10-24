@@ -1,8 +1,9 @@
-# v0.4 (WIP)
+# v0.4
 
 + Don't attempt to re-use shards already moved
 + Add `--one-way` to help where shard count is imbalanced (perhaps for a subset of indices)
 + Improve printing of node/shard state
++ Stop optimising shards when there are no longer improvements
 
 # v0.3
 

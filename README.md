@@ -25,8 +25,13 @@ Options:
   --attr TEXT           Node attributes in form key=value.
   --commit              Execute the shard reroutes (default print only).
   --print-state         Print the current nodes & weights and exit.
+  --index-name TEXT     Filter the indices for swaps by name, supports
+                        wildcards.
   --max-node TEXT       Force the max node to consider for shard swaps.
   --min-node TEXT       Force the min node to consider for shard swaps.
+  --one-way             Disables shard swaps and simply moves max -> min. Note
+                        after ES rebalancing is restored ES will attempt to
+                        rebalance itself according to it's own heuristics.
   --help                Show this message and exit.
 ```
 
