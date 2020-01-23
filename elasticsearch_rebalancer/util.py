@@ -8,9 +8,10 @@ from humanize import naturalsize
 
 
 def matches_attrs(attrs, match_attrs):
-    match_attrs = match_attrs or {}
-    attrs = attrs or {}
-    return attrs == match_attrs
+    for key, value in match_attrs.items():
+        if attrs.get(key) != value:
+            return False
+    return True
 
 
 def es_request(es_host, endpoint, method=requests.get, **kwargs):
