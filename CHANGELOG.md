@@ -1,3 +1,7 @@
+# 0.5
+
++ Only check user provided attributes
+
 # v0.4
 
 + Don't attempt to re-use shards already moved
