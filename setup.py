@@ -11,7 +11,7 @@ if __name__ == '__main__':
     setup(
         name='elasticsearch-rebalancer',
         description='Pokes Elasticsearch to balance itself sensibly.',
-        version='0.4',
+        version='0.5',
         author='EDITED devs',
         author_email='dev@edited.com',
         packages=[
