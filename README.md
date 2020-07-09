@@ -7,7 +7,10 @@ By default ES balances shards over nodes by considering:
 + The number of shards / node
 + The number of shards / index / node
 
-Which is great if every shard is the same size, but in reality this is not the case. Without considering the size of shards (except for watermarks) it's possible to end up with some nodes almost at watermark alongside others that are almost empty. [This blog post](http://engineering.simplymeasured.com/dev-blog/2015/07/08/balancing-elasticsearch-cluster-by-shard-size.html) describes it well - this script is inspired by that project. As well as size this logic can be applied to any weighting of shards.
+Which is great if every shard is the same size, but in reality this is not the case. Without considering the size of shards (except for watermarks) it's possible to end up with some nodes almost at watermark alongside others that are almost empty. [This blog post](http://engineering.simplymeasured.com/dev-blog/2015/07/08/balancing-elasticsearch-cluster-by-shard-size.html) describes it well - this script is inspired by that project. As well as size this logic can be applied to any weighting of shards. This diagram highlights the problem `elasticsearch-rebalancer` attempts to solve:
+
+![](es-rebalancer.png)
+
 
 ## How does it work?
 
