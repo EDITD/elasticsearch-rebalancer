@@ -40,7 +40,7 @@ def find_node(nodes, node_name=None):
 
 
 def attempt_to_find_swap(
-    nodes, shards, used_shards,
+    nodes, shards,
     max_node_name=None,
     min_node_name=None,
     format_shard_weight_function=lambda weight: weight,
@@ -68,10 +68,7 @@ def attempt_to_find_swap(
     min_node_shards = node_name_to_shards[min_node['name']]
 
     for shard in reversed(max_node_shards):  # biggest to smallest shard
-        if (
-            shard['id'] not in used_shards
-            and min_node['name'] not in index_to_node_names[shard['index']]
-        ):
+        if min_node['name'] not in index_to_node_names[shard['index']]:
             max_shard = shard
             break
     else:
@@ -81,10 +78,7 @@ def attempt_to_find_swap(
         ))
 
     for shard in min_node_shards:
-        if (
-            shard['id'] not in used_shards
-            and max_node['name'] not in index_to_node_names[shard['index']]
-        ):
+        if max_node['name'] not in index_to_node_names[shard['index']]:
             min_shard = shard
             break
     else:
@@ -94,13 +88,11 @@ def attempt_to_find_swap(
         ))
 
     # Update shard + node info according to the reroutes
-    used_shards.add(max_shard['id'])
     max_shard['node'] = min_node['name']
     min_node['weight'] += max_shard['weight']
     max_node['weight'] -= max_shard['weight']
 
     if not one_way:
-        used_shards.add(min_shard['id'])
         min_shard['node'] = max_node['name']
         min_node['weight'] -= min_shard['weight']
         max_node['weight'] += min_shard['weight']
@@ -152,7 +144,7 @@ def attempt_to_find_swap(
             },
         })
 
-    return reroute_commands
+    return reroute_commands, (min_shard, max_shard)
 
 
 def print_command(command):
@@ -370,18 +362,19 @@ def make_rebalance_elasticsearch_cli(
             click.echo('Investigating rebalance options...')
 
             all_reroute_commands = []
-            used_shards = set()
 
             for i in range(iterations):
                 click.echo(f'> Iteration {i}')
-                reroute_commands = attempt_to_find_swap(
+                reroute_commands, used_shards = attempt_to_find_swap(
                     nodes, shards,
-                    used_shards=used_shards,
                     max_node_name=max_node[0] if max_node else None,
                     min_node_name=min_node[0] if min_node else None,
                     format_shard_weight_function=format_shard_weight_function,
                     one_way=one_way,
                 )
+
+                # Exclude used shards for remaining iterations
+                shards = [shard for  shard in shards if shard not in used_shards]
 
                 if reroute_commands:
                     all_reroute_commands.extend(reroute_commands)
