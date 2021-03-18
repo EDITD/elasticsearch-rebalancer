@@ -144,7 +144,7 @@ def attempt_to_find_swap(
             },
         })
 
-    return reroute_commands, (min_shard, max_shard)
+    return reroute_commands, (min_shard, max_shard), (min_node, max_node)
 
 
 def print_command(command):
@@ -281,6 +281,16 @@ def make_rebalance_elasticsearch_cli(
             "to rebalance itself according to it's own heuristics."
         ),
     )
+    @click.option(
+        '--no-reuse-nodes',
+        is_flag=True,
+        default=False,
+        help=(
+            "Don't re-use the same node twice, ths is useful when "
+            'rebalancing disk usage across many nodes, to better '
+            'parallelise resources as much as possible.'
+        )
+    )
     def rebalance_elasticsearch(
         es_host,
         iterations=1,
@@ -291,6 +301,7 @@ def make_rebalance_elasticsearch_cli(
         max_node=None,
         min_node=None,
         one_way=False,
+        no_reuse_nodes=False,
     ):
         # Parse out any attrs
         attrs = {}
@@ -365,7 +376,7 @@ def make_rebalance_elasticsearch_cli(
 
             for i in range(iterations):
                 click.echo(f'> Iteration {i}')
-                reroute_commands, used_shards = attempt_to_find_swap(
+                reroute_commands, used_shards, used_nodes = attempt_to_find_swap(
                     nodes, shards,
                     max_node_name=max_node[0] if max_node else None,
                     min_node_name=min_node[0] if min_node else None,
@@ -373,8 +384,10 @@ def make_rebalance_elasticsearch_cli(
                     one_way=one_way,
                 )
 
-                # Exclude used shards for remaining iterations
+                # Exclude used shards/nodes for remaining iterations
                 shards = [shard for  shard in shards if shard not in used_shards]
+                if no_reuse_nodes:
+                    nodes = [node for  node in nodes if node not in used_nodes]
 
                 if reroute_commands:
                     all_reroute_commands.extend(reroute_commands)
