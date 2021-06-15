@@ -292,6 +292,11 @@ def make_rebalance_elasticsearch_cli(
     )
     @click.option(
         '--override-watermarks',
+        help=(
+            'Temporarily override the Elasticsearch low & high disk '
+            'watermark settings. Makes it possible to parallel swap '
+            'shards even when the most full nodes are on the limit.'
+        ),
     )
     def rebalance_elasticsearch(
         es_host,
