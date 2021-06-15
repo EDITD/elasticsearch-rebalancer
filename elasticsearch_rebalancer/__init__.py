@@ -290,6 +290,9 @@ def make_rebalance_elasticsearch_cli(
             "to rebalance itself according to it's own heuristics."
         ),
     )
+    @click.option(
+        '--override-watermarks',
+    )
     def rebalance_elasticsearch(
         es_host,
         iterations=1,
@@ -300,6 +303,7 @@ def make_rebalance_elasticsearch_cli(
         max_node=None,
         min_node=None,
         one_way=False,
+        override_watermarks=None,
     ):
         # Parse out any attrs
         attrs = {}
@@ -330,14 +334,18 @@ def make_rebalance_elasticsearch_cli(
             check_raise_health(es_host)
 
             click.echo('Disabling cluster rebalance...')
-            # Save the old value to restore later
-            previous_rebalance = get_transient_cluster_settings(
-                es_host, ('cluster.routing.rebalance.enable',),
-            )['cluster.routing.rebalance.enable']
+            settings_to_set = {'cluster.routing.rebalance.enable': 'none'}
 
-            set_transient_cluster_settings(
-                es_host, {'cluster.routing.rebalance.enable': 'none'},
-            )
+            if override_watermarks:
+                click.echo(f'Overriding disk watermarks to: {override_watermarks}')
+                settings_to_set.update({
+                    'cluster.routing.allocation.disk.watermark.low': override_watermarks,
+                    'cluster.routing.allocation.disk.watermark.high': override_watermarks,
+                })
+
+            # Save the old value to restore later
+            previous_settings = get_transient_cluster_settings(es_host, settings_to_set.keys())
+            set_transient_cluster_settings(es_host, settings_to_set)
 
         try:
             click.echo('Loading nodes...')
@@ -406,11 +414,9 @@ def make_rebalance_elasticsearch_cli(
         finally:
             if commit:
                 click.echo(
-                    f'Restoring previous rebalance setting ({previous_rebalance})...',
+                    f'Restoring previous settings ({previous_settings})...',
                 )
-                set_transient_cluster_settings(
-                    es_host, {'cluster.routing.rebalance.enable': previous_rebalance},
-                )
+                set_transient_cluster_settings(es_host, previous_settings)
 
         click.echo(f'# Cluster rebalanced with {len(all_reroute_commands)} reroutes!')
         click.echo()
