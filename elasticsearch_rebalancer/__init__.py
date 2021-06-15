@@ -341,7 +341,7 @@ def make_rebalance_elasticsearch_cli(
             click.echo('Loading nodes...')
             nodes = get_nodes(es_host, attrs=attrs)
             if not nodes:
-                raise BalanceException(f'No nodes found!')
+                raise BalanceException('No nodes found!')
 
             click.echo(f'> Found {len(nodes)} nodes')
             click.echo()
@@ -354,7 +354,7 @@ def make_rebalance_elasticsearch_cli(
                 get_shard_weight_function=get_shard_weight_function,
             )
             if not shards:
-                raise BalanceException(f'No shards found!')
+                raise BalanceException('No shards found!')
 
             click.echo(f'> Found {len(shards)} shards')
             click.echo()

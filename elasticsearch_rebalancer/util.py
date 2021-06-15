@@ -79,7 +79,7 @@ def set_transient_cluster_setting(es_host, path, value):
 
 
 def get_nodes(es_host, attrs=None):
-    nodes = es_request(es_host, f'_nodes/stats/fs')['nodes']
+    nodes = es_request(es_host, '_nodes/stats/fs')['nodes']
     filtered_nodes = []
 
     for node_id, node_data in nodes.items():
