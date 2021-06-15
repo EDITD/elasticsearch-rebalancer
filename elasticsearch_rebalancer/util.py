@@ -60,21 +60,27 @@ def execute_reroute_commands(es_host, commands):
     })
 
 
-def get_transient_cluster_setting(es_host, path, default=None):
-    attrs = path.split('.')
+def get_transient_cluster_settings(es_host, paths):
     settings = get_cluster_settings(es_host)
+    path_to_value = {}
 
-    value = settings['transient']
-    for attr in attrs:
-        value = value.get(attr)
-        if not value:
-            return default
-    return value
+    for path in paths:
+        attrs = path.split('.')
+
+        value = settings['transient']
+        for attr in attrs:
+            value = value.get(attr)
+            if not value:
+                path_to_value[path] = None
+                break
+        path_to_value[path] = value
+
+    return path_to_value
 
 
-def set_transient_cluster_setting(es_host, path, value):
+def set_transient_cluster_settings(es_host, path_to_value):
     es_request(es_host, '_cluster/settings', method=requests.put, json={
-        'transient': {path: value},
+        'transient': path_to_value,
     })
 
 

@@ -13,8 +13,8 @@ from .util import (
     get_nodes,
     get_shard_size,
     get_shards,
-    get_transient_cluster_setting,
-    set_transient_cluster_setting,
+    get_transient_cluster_settings,
+    set_transient_cluster_settings,
     wait_for_no_relocations,
 )
 
@@ -197,9 +197,10 @@ def print_execute_reroutes(es_host, commands):
     )):
         raise BalanceException('User exited serial rerouting!')
 
-    cluster_update_interval = get_transient_cluster_setting(
-        es_host, 'cluster.info.update.interval', default='30s',
-    )
+    cluster_update_interval = get_transient_cluster_settings(
+        es_host, 'cluster.info.update.interval',
+    )['cluster.info.update.interval'] or '30s'
+
     cluster_update_interval = int(cluster_update_interval[:-1])
 
     for i, command in enumerate(commands, 1):
@@ -330,11 +331,12 @@ def make_rebalance_elasticsearch_cli(
 
             click.echo('Disabling cluster rebalance...')
             # Save the old value to restore later
-            previous_rebalance = get_transient_cluster_setting(
-                es_host, 'cluster.routing.rebalance.enable',
-            )
-            set_transient_cluster_setting(
-                es_host, 'cluster.routing.rebalance.enable', 'none',
+            previous_rebalance = get_transient_cluster_settings(
+                es_host, ('cluster.routing.rebalance.enable',),
+            )['cluster.routing.rebalance.enable']
+
+            set_transient_cluster_settings(
+                es_host, {'cluster.routing.rebalance.enable': 'none'},
             )
 
         try:
@@ -406,8 +408,8 @@ def make_rebalance_elasticsearch_cli(
                 click.echo(
                     f'Restoring previous rebalance setting ({previous_rebalance})...',
                 )
-                set_transient_cluster_setting(
-                    es_host, 'cluster.routing.rebalance.enable', previous_rebalance,
+                set_transient_cluster_settings(
+                    es_host, {'cluster.routing.rebalance.enable': previous_rebalance},
                 )
 
         click.echo(f'# Cluster rebalanced with {len(all_reroute_commands)} reroutes!')
