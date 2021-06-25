@@ -13,8 +13,8 @@ from .util import (
     get_nodes,
     get_shard_size,
     get_shards,
-    get_transient_cluster_setting,
-    set_transient_cluster_setting,
+    get_transient_cluster_settings,
+    set_transient_cluster_settings,
     wait_for_no_relocations,
 )
 
@@ -197,9 +197,10 @@ def print_execute_reroutes(es_host, commands):
     )):
         raise BalanceException('User exited serial rerouting!')
 
-    cluster_update_interval = get_transient_cluster_setting(
-        es_host, 'cluster.info.update.interval', default='30s',
-    )
+    cluster_update_interval = get_transient_cluster_settings(
+        es_host, 'cluster.info.update.interval',
+    )['cluster.info.update.interval'] or '30s'
+
     cluster_update_interval = int(cluster_update_interval[:-1])
 
     for i, command in enumerate(commands, 1):
@@ -289,6 +290,14 @@ def make_rebalance_elasticsearch_cli(
             "to rebalance itself according to it's own heuristics."
         ),
     )
+    @click.option(
+        '--override-watermarks',
+        help=(
+            'Temporarily override the Elasticsearch low & high disk '
+            'watermark settings. Makes it possible to parallel swap '
+            'shards even when the most full nodes are on the limit.'
+        ),
+    )
     def rebalance_elasticsearch(
         es_host,
         iterations=1,
@@ -299,6 +308,7 @@ def make_rebalance_elasticsearch_cli(
         max_node=None,
         min_node=None,
         one_way=False,
+        override_watermarks=None,
     ):
         # Parse out any attrs
         attrs = {}
@@ -329,19 +339,24 @@ def make_rebalance_elasticsearch_cli(
             check_raise_health(es_host)
 
             click.echo('Disabling cluster rebalance...')
+            settings_to_set = {'cluster.routing.rebalance.enable': 'none'}
+
+            if override_watermarks:
+                click.echo(f'Overriding disk watermarks to: {override_watermarks}')
+                settings_to_set.update({
+                    'cluster.routing.allocation.disk.watermark.low': override_watermarks,
+                    'cluster.routing.allocation.disk.watermark.high': override_watermarks,
+                })
+
             # Save the old value to restore later
-            previous_rebalance = get_transient_cluster_setting(
-                es_host, 'cluster.routing.rebalance.enable',
-            )
-            set_transient_cluster_setting(
-                es_host, 'cluster.routing.rebalance.enable', 'none',
-            )
+            previous_settings = get_transient_cluster_settings(es_host, settings_to_set.keys())
+            set_transient_cluster_settings(es_host, settings_to_set)
 
         try:
             click.echo('Loading nodes...')
             nodes = get_nodes(es_host, attrs=attrs)
             if not nodes:
-                raise BalanceException(f'No nodes found!')
+                raise BalanceException('No nodes found!')
 
             click.echo(f'> Found {len(nodes)} nodes')
             click.echo()
@@ -354,7 +369,7 @@ def make_rebalance_elasticsearch_cli(
                 get_shard_weight_function=get_shard_weight_function,
             )
             if not shards:
-                raise BalanceException(f'No shards found!')
+                raise BalanceException('No shards found!')
 
             click.echo(f'> Found {len(shards)} shards')
             click.echo()
@@ -404,11 +419,9 @@ def make_rebalance_elasticsearch_cli(
         finally:
             if commit:
                 click.echo(
-                    f'Restoring previous rebalance setting ({previous_rebalance})...',
+                    f'Restoring previous settings ({previous_settings})...',
                 )
-                set_transient_cluster_setting(
-                    es_host, 'cluster.routing.rebalance.enable', previous_rebalance,
-                )
+                set_transient_cluster_settings(es_host, previous_settings)
 
         click.echo(f'# Cluster rebalanced with {len(all_reroute_commands)} reroutes!')
         click.echo()
