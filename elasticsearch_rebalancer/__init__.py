@@ -71,6 +71,7 @@ def attempt_to_find_swap(
         if (
             shard['id'] not in used_shards
             and min_node['name'] not in index_to_node_names[shard['index']]
+            and shard['weight'] < spread_used / 2
         ):
             max_shard = shard
             break
