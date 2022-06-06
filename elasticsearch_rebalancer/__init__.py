@@ -1,8 +1,10 @@
 from collections import deque
+from email.policy import default
 from time import sleep
 
 import click
 import requests
+from requests.auth import HTTPBasicAuth
 
 
 from .util import (
@@ -18,6 +20,84 @@ from .util import (
     wait_for_no_relocations,
 )
 
+@click.command()
+@click.argument('es_host')
+@click.option(
+    '--iterations',
+    default=1,
+    type=int,
+    help='Number of iterations (swaps) to execute.',
+)
+@click.option(
+    '--attr',
+    multiple=True,
+    help='Node attributes in form key=value.',
+)
+@click.option(
+    '--commit',
+    is_flag=True,
+    default=False,
+    help='Execute the shard reroutes (default print only).',
+)
+@click.option(
+    '--print-state',
+    is_flag=True,
+    default=False,
+    help='Print the current nodes & weights and exit.',
+)
+@click.option(
+    '--index-name',
+    default=None,
+    help='Filter the indices for swaps by name, supports wildcards.',
+)
+@click.option(
+    '--max-node',
+    default=None,
+    multiple=True,
+    help='Force the max node to consider for shard swaps.',
+)
+@click.option(
+    '--min-node',
+    default=None,
+    multiple=True,
+    help='Force the min node to consider for shard swaps.',
+)
+@click.option(
+    '--one-way',
+    is_flag=True,
+    default=False,
+    help=(
+        'Disables shard swaps and simply moves max -> min. '
+        'Note after ES rebalancing is restored ES will attempt '
+        "to rebalance itself according to it's own heuristics."
+    ),
+)
+@click.option(
+    '--override-watermarks',
+    help=(
+        'Temporarily override the Elasticsearch low & high disk '
+        'watermark settings. Makes it possible to parallel swap '
+        'shards even when the most full nodes are on the limit.'
+    ),
+)
+@click.option(
+    '--skip-sslcheck',
+    is_flag=True,
+    default=False,
+    help=(
+        'Skip ssl check if you are using a self-signed certificate'
+    ),
+)
+@click.option(
+    '--user',
+    default=None,
+    help='elasticsearch user',
+)
+@click.option(
+    '--password',
+    default=None,
+    help='elasticsearch password',
+)
 
 class BalanceException(click.ClickException):
     def __init__(self, message):
@@ -163,17 +243,37 @@ def print_command(command):
     ))
 
 
-def check_raise_health(es_host):
+def check_raise_health(
+    es_host,
+    user=None,
+    password=None,
+    skip_sslcheck=None
+    ):
     # Check we're good to go
     try:
-        check_cluster_health(es_host)
+        check_cluster_health(
+            es_host,
+            verify=False if skip_sslcheck else None,
+            auth=HTTPBasicAuth(user,password) if user else None
+        )
     except Exception as e:
         raise BalanceException(f'{e}')
 
 
-def print_execute_reroutes(es_host, commands):
+def print_execute_reroutes(
+    es_host, 
+    commands,
+    user=None,
+    password=None,
+    skip_sslcheck=None
+    ):
     try:
-        execute_reroute_commands(es_host, commands)
+        execute_reroute_commands(
+            es_host, 
+            commands,
+            verify=False if skip_sslcheck else None,
+            auth=HTTPBasicAuth(user,password) if user else None
+        )
     except requests.HTTPError as e:
         if e.response.status_code != 400:
             raise
@@ -184,7 +284,11 @@ def print_execute_reroutes(es_host, commands):
             print_command(command)
 
         click.echo('Waiting for relocations to complete...')
-        wait_for_no_relocations(es_host)
+        wait_for_no_relocations(
+            es_host,
+            verify=False if skip_sslcheck else None,
+            auth=HTTPBasicAuth(user,password) if user else None
+        )
         return
 
     # Now try to execute the reroutes one by one - it's likely that ES rejected the
@@ -198,20 +302,37 @@ def print_execute_reroutes(es_host, commands):
         raise BalanceException('User exited serial rerouting!')
 
     cluster_update_interval = get_transient_cluster_settings(
-        es_host, 'cluster.info.update.interval',
+        es_host, 
+        ['cluster.info.update.interval'],
+        verify=False if skip_sslcheck else None,
+        auth=HTTPBasicAuth(user,password) if user else None
     )['cluster.info.update.interval'] or '30s'
 
     cluster_update_interval = int(cluster_update_interval[:-1])
 
     for i, command in enumerate(commands, 1):
         print_command(command)
-        execute_reroute_commands(es_host, [command])
+        execute_reroute_commands(
+            es_host, 
+            [command],
+            verify=False if skip_sslcheck else None,
+            auth=HTTPBasicAuth(user,password) if user else None
+        )
 
         click.echo(
             f'Waiting for relocation to complete ({i}/{len(commands)})...',
         )
-        wait_for_no_relocations(es_host)
-        check_raise_health(es_host)  # check the cluster is still good
+        wait_for_no_relocations(
+            es_host,
+            verify=False if skip_sslcheck else None,
+            auth=HTTPBasicAuth(user,password) if user else None
+        )
+        check_raise_health(
+            es_host,
+            user,
+            password,
+            skip_sslcheck,
+        )  # check the cluster is still good
         # Wait for minimum update interval or ES might still think there's not
         # enough space for the next reroute.
         sleep(cluster_update_interval + 1)
@@ -237,7 +358,7 @@ def print_node_shard_states(
 def make_rebalance_elasticsearch_cli(
     get_shard_weight_function=get_shard_size,
     format_shard_weight_function=format_shard_size,
-):
+):  
     @click.command()
     @click.argument('es_host')
     @click.option(
@@ -298,6 +419,24 @@ def make_rebalance_elasticsearch_cli(
             'shards even when the most full nodes are on the limit.'
         ),
     )
+    @click.option(
+        '--skip-sslcheck',
+        is_flag=True,
+        default=False,
+        help=(
+            'Skip ssl check if you are using a self-signed certificate'
+        ),
+    )
+    @click.option(
+        '--user',
+        default=None,
+        help='elasticsearch user',
+    )
+    @click.option(
+        '--password',
+        default=None,
+        help='elasticsearch password',
+    )         
     def rebalance_elasticsearch(
         es_host,
         iterations=1,
@@ -309,6 +448,9 @@ def make_rebalance_elasticsearch_cli(
         min_node=None,
         one_way=False,
         override_watermarks=None,
+        user=None,
+        password=None,
+        skip_sslcheck=None
     ):
         # Parse out any attrs
         attrs = {}
@@ -336,7 +478,12 @@ def make_rebalance_elasticsearch_cli(
                 raise click.ClickException('Cannot have --commit and --print-state!')
 
             # Check we have a healthy cluster
-            check_raise_health(es_host)
+            check_raise_health(
+                es_host,
+                user,
+                password,
+                skip_sslcheck
+            )
 
             click.echo('Disabling cluster rebalance...')
             settings_to_set = {'cluster.routing.rebalance.enable': 'none'}
@@ -346,15 +493,31 @@ def make_rebalance_elasticsearch_cli(
                 settings_to_set.update({
                     'cluster.routing.allocation.disk.watermark.low': override_watermarks,
                     'cluster.routing.allocation.disk.watermark.high': override_watermarks,
+                    'cluster.routing.allocation.disk.watermark.flood_stage': override_watermarks
                 })
 
             # Save the old value to restore later
-            previous_settings = get_transient_cluster_settings(es_host, settings_to_set.keys())
-            set_transient_cluster_settings(es_host, settings_to_set)
+            previous_settings = get_transient_cluster_settings(
+                es_host, 
+                settings_to_set.keys(),
+                verify=False if skip_sslcheck else None,
+                auth=HTTPBasicAuth(user,password) if user else None
+                )
+            set_transient_cluster_settings(
+                es_host, 
+                settings_to_set,
+                verify=False if skip_sslcheck else None,
+                auth=HTTPBasicAuth(user,password) if user else None
+            )
 
         try:
             click.echo('Loading nodes...')
-            nodes = get_nodes(es_host, attrs=attrs)
+            nodes = get_nodes(
+                es_host, 
+                attrs=attrs,
+                verify=False if skip_sslcheck else None,
+                auth=HTTPBasicAuth(user,password) if user else None
+                )
             if not nodes:
                 raise BalanceException('No nodes found!')
 
@@ -367,6 +530,8 @@ def make_rebalance_elasticsearch_cli(
                 attrs=attrs,
                 index_name_filter=index_name,
                 get_shard_weight_function=get_shard_weight_function,
+                verify=False if skip_sslcheck else None,
+                auth=HTTPBasicAuth(user,password) if user else None
             )
             if not shards:
                 raise BalanceException('No shards found!')
@@ -409,7 +574,13 @@ def make_rebalance_elasticsearch_cli(
                     max_node.rotate()
 
             if commit:
-                print_execute_reroutes(es_host, all_reroute_commands)
+                print_execute_reroutes(
+                    es_host, 
+                    all_reroute_commands,
+                    user,
+                    password,
+                    skip_sslcheck
+                )
 
         except requests.HTTPError as e:
             click.echo(click.style(e.response.content, 'yellow'))
@@ -421,7 +592,12 @@ def make_rebalance_elasticsearch_cli(
                 click.echo(
                     f'Restoring previous settings ({previous_settings})...',
                 )
-                set_transient_cluster_settings(es_host, previous_settings)
+                set_transient_cluster_settings(
+                    es_host, 
+                    previous_settings,
+                    verify=False if skip_sslcheck else None,
+                    auth=HTTPBasicAuth(user,password) if user else None
+                )
 
         click.echo(f'# Cluster rebalanced with {len(all_reroute_commands)} reroutes!')
         click.echo()

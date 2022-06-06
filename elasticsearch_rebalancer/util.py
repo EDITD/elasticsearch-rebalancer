@@ -3,6 +3,7 @@ from fnmatch import fnmatch
 from time import sleep
 
 import requests
+#from requests.auth import HTTPBasicAuth
 
 from humanize import naturalsize
 
@@ -15,8 +16,11 @@ def matches_attrs(attrs, match_attrs):
 
 
 def es_request(es_host, endpoint, method=requests.get, **kwargs):
+    #kwargs['auth']=HTTPBasicAuth('es_rebalance','WBE*wdx@ahf3nhg!whb')
+    #kwargs['verify']=False
     response = method(
-        f'http://{es_host}/{endpoint}',
+        #f'http://{es_host}/{endpoint}',
+        f'{es_host}/{endpoint}',
         **kwargs,
     )
 
@@ -24,16 +28,16 @@ def es_request(es_host, endpoint, method=requests.get, **kwargs):
     return response.json()
 
 
-def get_cluster_health(es_host):
-    return es_request(es_host, '_cluster/health')
+def get_cluster_health(es_host,**esargs):
+    return es_request(es_host, '_cluster/health',**esargs)
 
 
-def get_cluster_settings(es_host):
-    return es_request(es_host, '_cluster/settings')
+def get_cluster_settings(es_host,**esargs):
+    return es_request(es_host, '_cluster/settings',**esargs)
 
 
-def check_cluster_health(es_host):
-    health = get_cluster_health(es_host)
+def check_cluster_health(es_host,**esargs):
+    health = get_cluster_health(es_host,**esargs)
 
     if health['status'] != 'green':
         raise Exception('ES is not green!')
@@ -43,9 +47,9 @@ def check_cluster_health(es_host):
         raise Exception(f'ES is already relocating {relocating_shards} shards!')
 
 
-def wait_for_no_relocations(es_host):
+def wait_for_no_relocations(es_host,**esargs):
     while True:
-        health = get_cluster_health(es_host)
+        health = get_cluster_health(es_host,**esargs)
 
         relocating_shards = health['relocating_shards']
         if not relocating_shards:
@@ -54,14 +58,13 @@ def wait_for_no_relocations(es_host):
         sleep(10)
 
 
-def execute_reroute_commands(es_host, commands):
-    es_request(es_host, '_cluster/reroute', method=requests.post, json={
-        'commands': commands,
-    })
+def execute_reroute_commands(es_host, commands,**esargs):
+    es_request(es_host, '_cluster/reroute', method=requests.post, 
+                json={'commands': commands},**esargs)
 
 
-def get_transient_cluster_settings(es_host, paths):
-    settings = get_cluster_settings(es_host)
+def get_transient_cluster_settings(es_host, paths,**esargs):
+    settings = get_cluster_settings(es_host,**esargs)
     path_to_value = {}
 
     for path in paths:
@@ -78,14 +81,13 @@ def get_transient_cluster_settings(es_host, paths):
     return path_to_value
 
 
-def set_transient_cluster_settings(es_host, path_to_value):
-    es_request(es_host, '_cluster/settings', method=requests.put, json={
-        'transient': path_to_value,
-    })
+def set_transient_cluster_settings(es_host, path_to_value,**esargs):
+    es_request(es_host, '_cluster/settings', method=requests.put, 
+                json={ 'transient': path_to_value }, **esargs)
 
 
-def get_nodes(es_host, attrs=None):
-    nodes = es_request(es_host, '_nodes/stats/fs')['nodes']
+def get_nodes(es_host, attrs=None,**esargs):
+    nodes = es_request(es_host, '_nodes/stats/fs',**esargs)['nodes']
     filtered_nodes = []
 
     for node_id, node_data in nodes.items():
@@ -110,8 +112,9 @@ def get_shards(
     attrs=None,
     index_name_filter=None,
     get_shard_weight_function=get_shard_size,
+    **esargs
 ):
-    indices = es_request(es_host, '_settings')
+    indices = es_request(es_host, '_settings',**esargs)
 
     filtered_index_names = []
 
@@ -137,6 +140,7 @@ def get_shards(
             'format': 'json',
             'bytes': 'b',
         },
+        **esargs
     )
 
     filtered_shards = []

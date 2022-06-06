@@ -1,5 +1,4 @@
-from . import make_rebalance_elasticsearch_cli
-
+from elasticsearch_rebalancer import make_rebalance_elasticsearch_cli
 
 def rebalance_elasticsearch():
     make_rebalance_elasticsearch_cli()()
