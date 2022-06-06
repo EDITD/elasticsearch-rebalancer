@@ -2,4 +2,10 @@
 *.pyc
 dist/
 build/
+lib/
+lib64
+share/
+bin/
+pyvenv.cfg
+.vscode/
 
