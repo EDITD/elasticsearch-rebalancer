@@ -18,13 +18,11 @@ if __name__ == '__main__':
             'elasticsearch_rebalancer',
         ],
         url='https://github.com/EDITD/elasticsearch-rebalancer',
+        python_requires='>=3.6',
         install_requires=REQUIREMENTS,
         entry_points={
             'console_scripts': (
-                (
-                    'es-rebalance='
-                    'elasticsearch_rebalancer.__main__:rebalance_elasticsearch'
-                ),
+                'es-rebalance=elasticsearch_rebalancer.__main__:rebalance_elasticsearch',
             ),
         },
     )
