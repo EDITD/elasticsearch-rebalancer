@@ -2,6 +2,7 @@
 
 + Add CLI option to temporarily override disk watermarks
 + Print out any unexpected error from ES in reroute operation
++ Drop support for python <= 3.5
 
 # 0.5
 
