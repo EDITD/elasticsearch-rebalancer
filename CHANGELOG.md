@@ -1,3 +1,8 @@
+# 0.6
+
++ Add CLI option to temporarily override disk watermarks
++ Print out any unexpected error from ES in reroute operation
+
 # 0.5
 
 + Only check user provided attributes

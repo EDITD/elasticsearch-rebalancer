@@ -164,8 +164,8 @@ def combine_nodes_and_shards(nodes, shards):
         index_to_node_names[shard['index']].append(shard['node'])
 
     node_name_to_shards = {
-        key: sorted(shards, key=lambda shard: shard['weight'])
-        for key, shards in node_name_to_shards.items()
+        node_name: sorted(shards, key=lambda shard: shard['weight'])
+        for node_name, shards in node_name_to_shards.items()
     }
 
     ordered_nodes = []
