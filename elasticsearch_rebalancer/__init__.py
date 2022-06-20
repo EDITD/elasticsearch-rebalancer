@@ -177,7 +177,7 @@ def print_execute_reroutes(es_host, commands):
     except requests.HTTPError as e:
         if e.response.status_code != 400:
             raise
-
+        click.echo(e)
     # Parallel reroute worked - so just wait & return
     else:
         for command in commands:
