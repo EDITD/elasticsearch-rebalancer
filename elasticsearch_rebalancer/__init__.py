@@ -198,7 +198,7 @@ def print_execute_reroutes(es_host, commands):
         raise BalanceException('User exited serial rerouting!')
 
     cluster_update_interval = get_transient_cluster_settings(
-        es_host, 'cluster.info.update.interval',
+        es_host, ['cluster.info.update.interval'],
     )['cluster.info.update.interval'] or '30s'
 
     cluster_update_interval = int(cluster_update_interval[:-1])
