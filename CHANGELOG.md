@@ -1,3 +1,6 @@
+# 0.6.1
++ Fix bug in get transient settings for cluster
+
 # 0.6
 
 + Add CLI option to temporarily override disk watermarks
